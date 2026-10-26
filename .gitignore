@@ -1,0 +1,9 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.log
+.DS_Store
+Thumbs.db
