@@ -4,7 +4,16 @@ require_once "config/database.php";
 $message = "";
 $message_type = "";
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+$allowed_groups = [
+    "A+", "A-", "B+", "B-",
+    "AB+", "AB-", "O+", "O-"
+];
+
+$allowed_genders = [
+    "Male", "Female", "Other", "Prefer not to say"
+];
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     // Get and clean form values
     $full_name = trim($_POST["full_name"] ?? "");
@@ -22,19 +31,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ? $last_donation_date
         : null;
 
-    // Allowed values
-    $allowed_groups = [
-        "A+", "A-", "B+", "B-",
-        "AB+", "AB-", "O+", "O-"
-    ];
-
-    $allowed_genders = [
-        "Male", "Female", "Other", "Prefer not to say"
-    ];
-
-    // Convert age only after checking the input
-    $age = filter_var($age_input, FILTER_VALIDATE_INT);
-
     // Validate name
     if (!preg_match("/^[a-zA-Z ]{2,100}$/", $full_name)) {
 
@@ -44,8 +40,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Validate email
     } elseif (
         $email === "" ||
-        !filter_var($email, FILTER_VALIDATE_EMAIL) ||
-        strlen($email) > 100
+        strlen($email) > 100 ||
+        !filter_var($email, FILTER_VALIDATE_EMAIL)
     ) {
 
         $message = "Please enter a valid email address.";
@@ -74,9 +70,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Validate age
     } elseif (
-        $age === false ||
-        $age < 18 ||
-        $age > 100
+        filter_var($age_input, FILTER_VALIDATE_INT) === false ||
+        (int) $age_input < 18 ||
+        (int) $age_input > 100
     ) {
 
         $message = "Donors must be between 18 and 100 years old.";
@@ -114,62 +110,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 )
             );
 
-        if (
-            !$valid_date ||
-            $last_donation_date > date("Y-m-d")
-        ) {
+        if (!$valid_date || $last_donation_date > date("Y-m-d")) {
 
             $message = "Please enter a valid donation date that is not in the future.";
             $message_type = "error";
 
-        } else {
-
-            // Insert donor information into MySQL
-            $sql = "INSERT INTO donors
-                    (full_name, email, phone, blood_group, gender,
-                     age, city, last_donation_date, address)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-            $stmt = $conn->prepare($sql);
-
-            if ($stmt) {
-
-                $stmt->bind_param(
-                    "sssssisss",
-                    $full_name,
-                    $email,
-                    $phone,
-                    $blood_group,
-                    $gender,
-                    $age,
-                    $city,
-                    $last_donation_date,
-                    $address
-                );
-
-                if ($stmt->execute()) {
-
-                    $message = "Registration successful! Thank you for becoming a donor.";
-                    $message_type = "success";
-
-                } else {
-
-                    $message = "Registration failed. Please try again.";
-                    $message_type = "error";
-                }
-
-                $stmt->close();
-
-            } else {
-
-                $message = "Unable to process registration right now.";
-                $message_type = "error";
-            }
         }
+    }
 
-    } else {
+    // Insert donor only if validation passed
+    if ($message === "") {
 
-        // Insert donor information when no donation date is supplied
         $sql = "INSERT INTO donors
                 (full_name, email, phone, blood_group, gender,
                  age, city, last_donation_date, address)
@@ -178,6 +129,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt = $conn->prepare($sql);
 
         if ($stmt) {
+
+            $age = (int) $age_input;
 
             $stmt->bind_param(
                 "sssssisss",
@@ -196,6 +149,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 $message = "Registration successful! Thank you for becoming a donor.";
                 $message_type = "success";
+
+                // Clear submitted values after successful registration
+                $_POST = [];
 
             } else {
 
@@ -224,6 +180,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <title>Become a Donor - LifeLink</title>
 
     <link rel="stylesheet" href="css/style.css">
+
+    <!-- Registration dropdown and form fixes -->
+    <style>
+        .form-group select {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            pointer-events: auto;
+            cursor: pointer;
+            position: relative;
+            z-index: 2;
+            opacity: 1;
+            visibility: visible;
+            appearance: auto;
+            -webkit-appearance: menulist;
+        }
+
+        .form-group select option {
+            color: #000;
+            background-color: #fff;
+        }
+    </style>
 </head>
 
 <body>
@@ -265,6 +243,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             <div class="form-grid">
 
+                <!-- Full Name -->
                 <div class="form-group">
                     <label for="full_name">Full Name *</label>
 
@@ -275,12 +254,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         minlength="2"
                         maxlength="100"
                         pattern="[a-zA-Z ]{2,100}"
-                        title="Enter 2–100 English letters and spaces only."
+                        title="Enter a valid n."
                         value="<?php echo htmlspecialchars($_POST['full_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                         required
                     >
                 </div>
 
+                <!-- Email -->
                 <div class="form-group">
                     <label for="email">Email Address *</label>
 
@@ -294,6 +274,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     >
                 </div>
 
+                <!-- Phone -->
                 <div class="form-group">
                     <label for="phone">Phone Number *</label>
 
@@ -311,44 +292,56 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     >
                 </div>
 
+                <!-- Blood Group Dropdown -->
                 <div class="form-group">
                     <label for="blood_group">Blood Group *</label>
 
-                    <select id="blood_group" name="blood_group" required>
+                    <select
+                        id="blood_group"
+                        name="blood_group"
+                        required
+                    >
                         <option value="">Select Blood Group</option>
 
-                        <?php
-                        foreach ($allowed_groups as $group):
-                        ?>
+                        <?php foreach ($allowed_groups as $group): ?>
+
                             <option
                                 value="<?php echo htmlspecialchars($group, ENT_QUOTES, 'UTF-8'); ?>"
                                 <?php echo (($_POST['blood_group'] ?? '') === $group) ? 'selected' : ''; ?>
                             >
                                 <?php echo htmlspecialchars($group, ENT_QUOTES, 'UTF-8'); ?>
                             </option>
+
                         <?php endforeach; ?>
 
                     </select>
                 </div>
 
+                <!-- Gender Dropdown -->
                 <div class="form-group">
                     <label for="gender">Gender</label>
 
-                    <select id="gender" name="gender">
+                    <select
+                        id="gender"
+                        name="gender"
+                    >
                         <option value="">Select Gender</option>
 
                         <?php foreach ($allowed_genders as $option): ?>
+
                             <option
                                 value="<?php echo htmlspecialchars($option, ENT_QUOTES, 'UTF-8'); ?>"
                                 <?php echo (($_POST['gender'] ?? '') === $option) ? 'selected' : ''; ?>
                             >
                                 <?php echo htmlspecialchars($option, ENT_QUOTES, 'UTF-8'); ?>
                             </option>
+
                         <?php endforeach; ?>
 
                     </select>
                 </div>
 
+                <!-- Age -->
                 <div class="form-group">
                     <label for="age">Age *</label>
 
@@ -363,6 +356,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     >
                 </div>
 
+                <!-- City -->
                 <div class="form-group">
                     <label for="city">City *</label>
 
@@ -376,6 +370,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     >
                 </div>
 
+                <!-- Last Donation Date -->
                 <div class="form-group">
                     <label for="last_donation_date">Last Donation Date</label>
 
@@ -388,6 +383,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     >
                 </div>
 
+                <!-- Address -->
                 <div class="form-group full-width">
                     <label for="address">Full Address *</label>
 
