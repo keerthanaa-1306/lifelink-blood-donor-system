@@ -34,7 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // Validate name
     if (!preg_match("/^[a-zA-Z ]{2,100}$/", $full_name)) {
 
-        $message = "Name must contain only English letters and spaces (2–100 characters).";
+        $message = "Name must contain only letters).";
         $message_type = "error";
 
     // Validate email
